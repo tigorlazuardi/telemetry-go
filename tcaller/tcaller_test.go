@@ -2,6 +2,7 @@ package tcaller
 
 import (
 	"encoding/json"
+	"log/slog"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -69,7 +70,7 @@ func TestCurrentResolvesExpectedFunctionAndLine(t *testing.T) {
 	if got := c.Function(); got != "github.com/tigorhutasuhut/telemetry-go/tcaller.captureCurrentLine" {
 		t.Fatalf("Function() = %q", got)
 	}
-	if got := c.ShortFunction(); got != "captureCurrentLine" {
+	if got := c.ShortFunction(); got != "tcaller.captureCurrentLine" {
 		t.Fatalf("ShortFunction() = %q", got)
 	}
 	if got := c.File(); filepath.Base(got) != "tcaller_test.go" {
@@ -159,17 +160,17 @@ func TestShortFunctionFormatting(t *testing.T) {
 	resetCache()
 
 	plain := plainFunctionCaller()
-	if got := plain.ShortFunction(); got != "plainFunctionCaller" {
+	if got := plain.ShortFunction(); got != "tcaller.plainFunctionCaller" {
 		t.Fatalf("plain ShortFunction() = %q", got)
 	}
 
 	value := (testService{}).valueMethodCaller()
-	if got := value.ShortFunction(); got != "testService.valueMethodCaller" {
+	if got := value.ShortFunction(); got != "tcaller.testService.valueMethodCaller" {
 		t.Fatalf("value method ShortFunction() = %q", got)
 	}
 
 	pointer := (&testService{}).pointerMethodCaller()
-	if got := pointer.ShortFunction(); got != "(*testService).pointerMethodCaller" {
+	if got := pointer.ShortFunction(); got != "tcaller.(*testService).pointerMethodCaller" {
 		t.Fatalf("pointer method ShortFunction() = %q", got)
 	}
 }
@@ -222,6 +223,42 @@ func TestMarshalHelpers(t *testing.T) {
 	}
 	if s != want {
 		t.Fatalf("unmarshaled string = %q, want %q", s, want)
+	}
+}
+
+func TestLogValue(t *testing.T) {
+	resetCache()
+
+	c, wantLine := captureCurrentLine(t)
+	v := c.LogValue()
+	if v.Kind() != slog.KindGroup {
+		t.Fatalf("LogValue kind = %v, want %v", v.Kind(), slog.KindGroup)
+	}
+
+	attrs := v.Group()
+	if len(attrs) != 3 {
+		t.Fatalf("LogValue group len = %d, want 3", len(attrs))
+	}
+
+	if attrs[0].Key != "file" || attrs[0].Value.String() != c.ShortFile() {
+		t.Fatalf("file attr = %q:%q", attrs[0].Key, attrs[0].Value.String())
+	}
+	if attrs[1].Key != "line" || attrs[1].Value.Int64() != int64(wantLine) {
+		t.Fatalf("line attr = %q:%d", attrs[1].Key, attrs[1].Value.Int64())
+	}
+	if attrs[2].Key != "function" || attrs[2].Value.String() != c.ShortFunction() {
+		t.Fatalf("function attr = %q:%q", attrs[2].Key, attrs[2].Value.String())
+	}
+}
+
+func TestZeroLogValue(t *testing.T) {
+	resetCache()
+
+	var c Caller
+	v := c.LogValue()
+	attrs := v.Group()
+	if len(attrs) != 0 {
+		t.Fatalf("LogValue group len = %d, want 0", len(attrs))
 	}
 }
 

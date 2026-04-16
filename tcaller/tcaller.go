@@ -2,6 +2,7 @@ package tcaller
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -115,6 +116,19 @@ func (c Caller) MarshalText() ([]byte, error) { return []byte(c.String()), nil }
 // MarshalJSON implements json.Marshaler as a JSON string.
 func (c Caller) MarshalJSON() ([]byte, error) { return json.Marshal(c.String()) }
 
+// LogValue implements slog.LogValuer.
+func (c Caller) LogValue() slog.Value {
+	if c.IsZero() {
+		return slog.GroupValue()
+	}
+
+	return slog.GroupValue(
+		slog.String("file", c.ShortFile()),
+		slog.Int("line", c.Line()),
+		slog.String("function", c.ShortFunction()),
+	)
+}
+
 func (c Caller) resolve() metadata {
 	if c.IsZero() {
 		return metadata{}
@@ -159,27 +173,27 @@ func resolveMetadata(c Caller) metadata {
 	return m
 }
 
+// shortFunctionName removes only the import path from a fully qualified runtime
+// function name while preserving the package name and any receiver information.
+//
+// It works by finding the last '/' and returning everything after it.
+//
+// That means:
+//   - main.main -> main.main
+//   - github.com/acme/x.Handle -> x.Handle
+//   - github.com/acme/x.testService.valueMethodCaller -> x.testService.valueMethodCaller
+//   - github.com/acme/x.(*Service).Run -> x.(*Service).Run
 func shortFunctionName(full string) string {
 	if full == "" {
 		return ""
 	}
 
 	lastSlash := strings.LastIndexByte(full, '/')
-	searchFrom := lastSlash + 1
 	if lastSlash < 0 {
-		searchFrom = 0
+		return full
 	}
 
-	firstDot := strings.IndexByte(full[searchFrom:], '.')
-	if firstDot < 0 {
-		return full[searchFrom:]
-	}
-	start := searchFrom + firstDot + 1
-	if start >= len(full) {
-		return ""
-	}
-
-	return full[start:]
+	return full[lastSlash+1:]
 }
 
 func trimCWD(file string) string {
