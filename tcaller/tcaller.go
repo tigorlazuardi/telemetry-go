@@ -28,8 +28,10 @@ type metadata struct {
 	fileLine      string
 }
 
-var callerCache sync.Map
-var cwd = currentWorkingDirectory()
+var (
+	callerCache sync.Map
+	cwd         = currentWorkingDirectory()
+)
 
 // New returns the caller at the given stack depth.
 //
@@ -188,15 +190,13 @@ func trimCWD(file string) string {
 		return file
 	}
 
-	cleanFile := filepath.Clean(file)
-	cleanCWD := filepath.Clean(cwd)
-	if cleanFile == cleanCWD {
-		return "."
+	if file == cwd {
+		return file
 	}
 
-	prefix := cleanCWD + string(filepath.Separator)
-	if strings.HasPrefix(cleanFile, prefix) {
-		return strings.TrimPrefix(cleanFile, prefix)
+	prefix := cwd + string(filepath.Separator)
+	if after, ok := strings.CutPrefix(file, prefix); ok {
+		return after
 	}
 
 	return file
