@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,15 +18,12 @@ func captureDefaultLogger(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	buf := &bytes.Buffer{}
 	old := slog.Default()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-		if a.Key == "time" {
-			return slog.Attr{}
-		}
-		return a
-	}, AddSource: true})))
+	slog.SetDefault(NewLogger(buf, &StderrHandlerOptions{IsTTY: boolPtr(false)}))
 	t.Cleanup(func() { slog.SetDefault(old) })
 	return buf
 }
+
+func boolPtr(v bool) *bool { return &v }
 
 func decodeRecord(t *testing.T, buf *bytes.Buffer) map[string]any {
 	t.Helper()
@@ -202,7 +200,7 @@ func TestEntryTimeAndLevel(t *testing.T) {
 func TestEntryUsesExplicitLogger(t *testing.T) {
 	defaultBuf := captureDefaultLogger(t)
 	explicitBuf := &bytes.Buffer{}
-	logger := slog.New(slog.NewJSONHandler(explicitBuf, &slog.HandlerOptions{AddSource: true}))
+	logger := NewLogger(explicitBuf, &StderrHandlerOptions{IsTTY: boolPtr(false)})
 
 	New().Logger(logger).Message("hello").Print(context.Background())
 
@@ -218,7 +216,7 @@ func TestEntryUsesExplicitLogger(t *testing.T) {
 func TestClassicLoggerUsesExplicitLogger(t *testing.T) {
 	defaultBuf := captureDefaultLogger(t)
 	explicitBuf := &bytes.Buffer{}
-	logger := slog.New(slog.NewJSONHandler(explicitBuf, &slog.HandlerOptions{AddSource: true}))
+	logger := NewLogger(explicitBuf, &StderrHandlerOptions{IsTTY: boolPtr(false)})
 
 	Classic().Logger(logger).Printf("user=%s", "u1")
 
@@ -260,5 +258,43 @@ func TestClassicLoggerLevels(t *testing.T) {
 	rec = decodeRecord(t, buf)
 	if rec["level"] != "ERROR" || rec["msg"] != "err=7" {
 		t.Fatalf("error record = %#v", rec)
+	}
+}
+
+func TestTTYHandlerFormatting(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := NewLogger(buf, &StderrHandlerOptions{IsTTY: boolPtr(true)})
+	New().Logger(logger).Message("hello").Fields("user", "u1").Print(context.Background())
+	out := buf.String()
+	if !strings.Contains(out, "hello") {
+		t.Fatalf("output = %q", out)
+	}
+	if !strings.Contains(out, "\x1b[") {
+		t.Fatalf("expected colored output, got %q", out)
+	}
+	if !strings.Contains(out, "hello\n") {
+		t.Fatalf("expected details on next line, got %q", out)
+	}
+	if !strings.Contains(out, `"user"`) || !strings.Contains(out, `"u1"`) {
+		t.Fatalf("expected pretty details, got %q", out)
+	}
+	if !strings.Contains(out, "<log_test.go:") {
+		t.Fatalf("expected caller in header, got %q", out)
+	}
+	if !strings.HasSuffix(out, "\n\n") {
+		t.Fatalf("expected trailing blank line, got %q", out)
+	}
+}
+
+func TestTTYHandlerOmitsEmptyDetailsBlock(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := NewLogger(buf, &StderrHandlerOptions{IsTTY: boolPtr(true)})
+	New().Logger(logger).Message("hello").Print(context.Background())
+	out := buf.String()
+	if strings.Contains(out, "{}") {
+		t.Fatalf("expected no empty details object, got %q", out)
+	}
+	if !strings.HasSuffix(out, "\n\n") {
+		t.Fatalf("expected trailing blank line, got %q", out)
 	}
 }
