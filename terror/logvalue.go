@@ -11,38 +11,38 @@ func (s StatusCode) LogValue() slog.Value {
 	return slog.StringValue(s.String())
 }
 
-// LogValue implements [slog.LogValuer] for [Error].
+// LogValue implements [slog.LogValuer] for [appError].
 //
 // The returned group contains:
-//   - "message"  — present only when [Error.Message] is non-empty.
+//   - "message"  — present only when message is non-empty.
 //   - "code"     — the error code; delegated to its own LogValue if available.
 //   - "caller"   — delegated to [tcaller.Caller.LogValue].
-//   - "fields"   — structured key-value pairs from [Error.Fields], if any.
+//   - "fields"   — structured key-value pairs, if any.
 //   - "source"   — wrapped errors; omitted when empty, unwrapped when exactly
 //     one, grouped with numeric keys "1", "2", … when more than one.
-func (e *Error) LogValue() slog.Value {
+func (e *appError) LogValue() slog.Value {
 	attrs := make([]slog.Attr, 0, 5)
 
 	// message
-	if e.Message != "" {
-		attrs = append(attrs, slog.String("message", e.Message))
+	if e.message != "" {
+		attrs = append(attrs, slog.String("message", e.message))
 	}
 
 	// code
-	if e.Code != nil {
-		if lv, ok := e.Code.(slog.LogValuer); ok {
+	if e.code != nil {
+		if lv, ok := e.code.(slog.LogValuer); ok {
 			attrs = append(attrs, slog.Any("code", lv))
 		} else {
-			attrs = append(attrs, slog.String("code", e.Code.String()))
+			attrs = append(attrs, slog.String("code", e.code.String()))
 		}
 	}
 
 	// caller — Caller already implements slog.LogValuer
-	attrs = append(attrs, slog.Any("caller", e.Caller))
+	attrs = append(attrs, slog.Any("caller", e.caller))
 
 	// fields
-	if len(e.Fields) > 0 {
-		fieldAttrs := argsToAttrs(e.Fields)
+	if len(e.fields) > 0 {
+		fieldAttrs := argsToAttrs(e.fields)
 		if len(fieldAttrs) > 0 {
 			attrs = append(attrs, slog.Attr{
 				Key:   "fields",
@@ -52,14 +52,14 @@ func (e *Error) LogValue() slog.Value {
 	}
 
 	// source
-	switch len(e.Source) {
+	switch len(e.source) {
 	case 0:
 		// omit
 	case 1:
-		attrs = append(attrs, slog.Any("source", errorLogValuer{e.Source[0]}))
+		attrs = append(attrs, slog.Any("source", errorLogValuer{e.source[0]}))
 	default:
-		sourceAttrs := make([]slog.Attr, len(e.Source))
-		for i, src := range e.Source {
+		sourceAttrs := make([]slog.Attr, len(e.source))
+		for i, src := range e.source {
 			sourceAttrs[i] = slog.Any(fmt.Sprintf("%d", i+1), errorLogValuer{src})
 		}
 		attrs = append(attrs, slog.Attr{

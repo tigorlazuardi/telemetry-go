@@ -6,7 +6,7 @@ import "github.com/tigorhutasuhut/telemetry-go/tcaller"
 //
 // The caller is automatically captured from the Wrap call site unless
 // overridden via [ErrorOptions.Caller].
-func Wrap(err error, opts ...ErrorOption) error {
+func Wrap(err error, opts ...ErrorOption) Error {
 	cfg := &ErrorOptions{}
 	for _, opt := range opts {
 		if opt != nil {
@@ -14,16 +14,16 @@ func Wrap(err error, opts ...ErrorOption) error {
 		}
 	}
 
-	e := &Error{
-		Caller: resolveErrorCaller(cfg.caller),
-		Fields: cfg.fields,
-		Source: []error{err},
+	e := &appError{
+		caller: resolveErrorCaller(cfg.caller),
+		fields: cfg.fields,
+		source: []error{err},
 	}
 	if cfg.message != nil {
-		e.Message = *cfg.message
+		e.message = *cfg.message
 	}
 	if cfg.code != nil {
-		e.Code = *cfg.code
+		e.code = *cfg.code
 	}
 	return e
 }
@@ -32,7 +32,7 @@ func Wrap(err error, opts ...ErrorOption) error {
 //
 // The caller is automatically captured from the Fail call site unless
 // overridden via [ErrorOptions.Caller].
-func Fail(opts ...ErrorOption) error {
+func Fail(opts ...ErrorOption) Error {
 	cfg := &ErrorOptions{}
 	for _, opt := range opts {
 		if opt != nil {
@@ -40,15 +40,34 @@ func Fail(opts ...ErrorOption) error {
 		}
 	}
 
-	e := &Error{
-		Caller: resolveErrorCaller(cfg.caller),
-		Fields: cfg.fields,
+	e := &appError{
+		caller: resolveErrorCaller(cfg.caller),
+		fields: cfg.fields,
 	}
 	if cfg.message != nil {
-		e.Message = *cfg.message
+		e.message = *cfg.message
 	}
 	if cfg.code != nil {
-		e.Code = *cfg.code
+		e.code = *cfg.code
+	}
+	return e
+}
+
+// Multi creates a new [Error] whose Source contains all non-nil errors from
+// errs. Nil entries are silently discarded.
+//
+// The returned Error can be used directly or combined with [Error.Resolve] to
+// return nil when all inputs were nil:
+//
+//	return terror.Multi(mayFail1(), mayFail2()).Resolve()
+//
+// The caller is automatically captured from the Multi call site.
+func Multi(errs ...error) Error {
+	e := &appError{caller: resolveErrorCaller(nil)}
+	for _, err := range errs {
+		if err != nil {
+			e.source = append(e.source, err)
+		}
 	}
 	return e
 }
